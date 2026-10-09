@@ -1,0 +1,10 @@
+[Unit]
+Description=AIC8800D80 USB mode switch
+After=systemd-udevd.service
+ConditionPathExists=/etc/usb_modeswitch.d/1111:1111
+
+[Service]
+Type=oneshot
+ExecStartPre=/usr/bin/sleep 2
+ExecStart=/usr/sbin/usb_modeswitch -c /etc/usb_modeswitch.d/1111:1111
+TimeoutStartSec=30
