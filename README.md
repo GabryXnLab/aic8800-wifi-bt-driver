@@ -12,7 +12,9 @@ chiavetta `bcdDevice=10.01` di questa macchina, sulle porte `usb4` i comandi
 da soli lasciavano visibile `1111:1111`; aggiungendo il reset il collegamento
 automatico ha raggiunto `a69c:8d81`, con Wi-Fi e Bluetooth disponibili.
 
-Testato su Ubuntu, kernel `7.0.0-30-generic` e `7.0.0-31-generic`.
+Testato su Ubuntu, kernel `7.0.0-30-generic` e `7.0.0-31-generic`. Le sorgenti
+compilano anche su `7.0.0-38-generic` (x86_64) e su Arch Linux ARM
+`7.2.9-1-armv7-ARCH` (armv7l), dopo le patch 7.1/7.2 descritte sotto.
 
 ## Perché questo pacchetto
 
@@ -48,6 +50,14 @@ Fix applicati rispetto all'upstream:
    `aic_load_fw` (`get_testmode`, `get_fw_path`, `aicwf_prealloc_txq_alloc`,
    ecc.): senza, `modpost` falliva con "undefined!" su questo kernel (che
    tratta i simboli non risolti come errore fatale, non solo warning).
+5. **Kernel 7.1 e 7.2** — applicate le sole parti USB di
+   `debian/patches/fix-linux-7.1-build.patch` e `fix-linux-7.2-build.patch`
+   di `radxa-pkg/aic8800` (con `patch -p6` dentro `dkms-src/`): le
+   operazioni `cfg80211` su chiavi e stazioni ricevono `wireless_dev` invece
+   di `net_device`, `cfg80211_new_sta`/`cfg80211_del_sta` idem,
+   `remain_on_channel` ha il nuovo parametro `rx_addr`, e `strncpy()` (rimossa
+   in 7.2) è sostituita in `rwnx_msg_tx.c`. Tutto è sotto
+   `LINUX_VERSION_CODE`, quindi i kernel precedenti non cambiano.
 
 ## Aggiornamenti automatici
 
@@ -119,7 +129,16 @@ sudo bash uninstall.sh
 
 ## Limitazioni note
 
-- I fix sono verificati sul kernel `7.0.0-30-generic`. Un kernel
+- Il funzionamento (WiFi + Bluetooth) è verificato sul kernel
+  `7.0.0-30-generic`; sui kernel 7.1/7.2 è verificata solo la compilazione.
+- `install.sh` è scritto per Ubuntu/Debian (`apt`, `dpkg`). Su altre
+  distribuzioni i passi sono gli stessi, ma i pacchetti vanno installati a mano
+  (su Arch: `dkms`, `linux-*-headers`, `usb_modeswitch`, `base-devel`).
+- Su schede con poca alimentazione USB (provato su ODROID-U3) il passaggio
+  di modalità può far cadere l'intero bus USB (`disabled by hub (EMI?)`),
+  compresa la scheda di rete se è collegata allo stesso bus: in quel caso
+  serve un hub USB alimentato.
+- I fix sono stati scritti sul kernel `7.0.0-30-generic`. Un kernel
   significativamente diverso (major bump, non solo un aggiornamento minor)
   potrebbe richiedere ulteriori aggiustamenti alle stesse API
   (`cfg80211_ops`, ecc.) — in tal caso DKMS segnalerà il fallimento della
