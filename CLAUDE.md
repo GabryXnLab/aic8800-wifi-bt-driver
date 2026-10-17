@@ -25,6 +25,7 @@ dkms-src/             # sorgenti dei tre moduli, un unico pacchetto DKMS (dkms.c
   aic_btusb/          # driver Bluetooth (sostituisce btusb per questa chiavetta)
 flake.nix nix/        # lib.mkDriver, nixosModules.default (hardware.aic8800.enable), packages.driver-<kernel>
 docs/                 # interfaccia-vendor.md: ABI vendor nl80211 per userspace (aicctl)
+tools/aicctl/         # CLI Rust (clap + libc, netlink a mano) sull'ABI vendor; Cargo.lock committato
 firmware/             # blob .bin di aic8800D80, copiati in <fw>/aic8800D80/
 usb_modeswitch/ systemd/ udev/ modprobe/ modules-load.d/   # da 1111:1111 a a69c:8d80 -> 8d81
 install.sh uninstall.sh
@@ -36,6 +37,7 @@ install.sh uninstall.sh
 sudo bash install.sh                        # distro generica: apt/dnf/pacman/zypper + DKMS
 sudo bash uninstall.sh
 make -C dkms-src [KVER=… KDIR=… AIC_FW_DIR=…]   # build senza DKMS; "sudo make -C dkms-src install"
+nix build .#aicctl                          # la CLI (cargo build --release --locked in tools/aicctl)
 nix build .#driver-6_12                     # matrice: 5_15 6_1 6_6 6_12 6_18 7_2 (nixpkgs 26.05)
 ```
 
@@ -103,6 +105,12 @@ backtick in un file e `git commit -F`.
   `docs/interfaccia-vendor.md`, codice in `aic_vendor.{c,h}`. `iw vendor send` non marca i dati come
   annidati: i comandi vendor con dati usano `VENDOR_CMD_RAW_DATA` e validano da soli. Il firmware
   non ha un get per la coex: lo stato vive in `rwnx_hw->coex`.
+- `aicctl` (`tools/aicctl`): trova il wiphy dal driver delle *interfacce* USB (`/sys/class/ieee80211/phyN/device/*/driver`:
+  `device/driver` e' `usb`), `--dev` accetta `wlan0` o `phyN`. Cambiare l'ABI vendor = aggiornare la tabella `ATTRS` di
+  `main.rs` e `docs/interfaccia-vendor.md`. `nix/aicctl.nix` costruisce la CLI; il modulo NixOS la mette in
+  `systemPackages`; `install.sh` la installa solo se `cargo` e' nel PATH di root. Gli eventi si provano solo se il
+  firmware li genera: nessun modo noto di provocarli. Nel ciclo rapido di ohos `rsync` + `git add -A` copre anche
+  `tools/` (serve per `nix build .#aicctl`).
 - Moduli in `/sys/module/<nome>/parameters`; debugfs di fdrv solo con `CONFIG_DEBUG_FS`.
 - Su ohos la chiavetta è anche l'unico Bluetooth (cassa «Eubiq BTS»): dopo ogni prova controllare
   `bluetoothctl show` e `nmcli device`; `eno1` mantiene la rete.

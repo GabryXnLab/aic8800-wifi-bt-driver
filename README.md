@@ -173,3 +173,20 @@ sudo bash uninstall.sh
 Il modulo Wi-Fi espone coesistenza Wi-Fi/Bluetooth regolabile a caldo, versioni, temperatura,
 statistiche ed eventi come comandi vendor nl80211 (`iw dev wlan0 vendor ...`). ABI, esempi e
 misure in [`docs/interfaccia-vendor.md`](docs/interfaccia-vendor.md).
+
+La CLI `aicctl` (Rust, `tools/aicctl`) li usa senza passare da `iw`; i comandi vendor richiedono root
+(`CAP_NET_ADMIN`). Trova da sola la chiavetta (`--dev wlan0|phyN` per sceglierla); `--json` per script e servizi.
+
+```bash
+sudo aicctl info                                   # versioni, chip, temperatura, canale
+sudo aicctl stats                                  # contatori di rete (interfaccia aperta)
+sudo aicctl coex get
+sudo aicctl coex set --bt-on 1 --enable-nullcts 0  # solo i valori indicati cambiano
+sudo aicctl coex set --timeslot 10000,2000         # sperimentale, abilita i timeslot
+sudo aicctl events                                 # COEX_TS_TIMEOUT, FW_PANIC, FW_ASSERT
+```
+
+Installazione: NixOS la include con `hardware.aic8800.enable` (o `nix run github:GabryXnLab/aic8800-wifi-bt-driver#aicctl`);
+`install.sh` la compila e installa in `/usr/local/bin` se trova `cargo` (sotto `sudo` il PATH puo' non contenerlo);
+altrove `cargo build --release --locked --manifest-path tools/aicctl/Cargo.toml` e copiare
+`tools/aicctl/target/release/aicctl`. Senza Rust restano i comandi `iw ... vendor` della documentazione.

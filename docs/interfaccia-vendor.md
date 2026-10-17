@@ -84,6 +84,14 @@ attributo oggi):
 | 1 | `FW_PANIC` | `MM_FW_PANIC_IND` (dettagli del crash nel log del kernel) |
 | 2 | `FW_ASSERT` | `MM_FW_ASSERT_IND` |
 
+## CLI `aicctl`
+
+`tools/aicctl` implementa l'ABI senza `iw`: `info`, `stats`, `coex get`, `coex set`, `events`, con `--json`
+(un oggetto con i nomi della colonna «nome» in minuscolo, piu' `phy`; per `events` un oggetto per riga:
+`time`, `phy`, `event`, `subcmd`) e `--dev wlan0|phyN`. Errori: `EPERM` = serve root, `ENETDOWN` = interfaccia chiusa
+(firmware non avviato), `EOPNOTSUPP` = modulo senza interfaccia vendor, `EINVAL` = valore rifiutato.
+`coex set` valida i booleani lato CLI; per provare il rifiuto del kernel serve `iw ... send` con un valore 2.
+
 ## Esempi
 
 Con `iw` serve sempre un argomento dati: `/dev/null` per «nessuno». `recv` stampa la risposta in
