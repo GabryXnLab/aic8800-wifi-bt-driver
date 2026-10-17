@@ -4557,6 +4557,10 @@ static int btusb_send_frame(struct hci_dev *hdev, struct sk_buff *skb)
         hdev->stat.cmd_tx++;
         break;
 
+#ifdef HCI_ISODATA_PKT
+    /* I dati ISO (CIS/BIS) escono sugli stessi endpoint bulk dell'ACL, come in btusb. */
+    case HCI_ISODATA_PKT:
+#endif
     case HCI_ACLDATA_PKT:
         if (bt_cb(skb)->pkt_type == HCI_COMMAND_PKT) {
             print_command(skb);
@@ -4579,7 +4583,8 @@ static int btusb_send_frame(struct hci_dev *hdev, struct sk_buff *skb)
 			skb->data, skb->len, btusb_tx_complete, skb);
         urb->transfer_flags |= URB_ZERO_PACKET;
 
-        hdev->stat.acl_tx++;
+        if (bt_cb(skb)->pkt_type == HCI_ACLDATA_PKT)
+            hdev->stat.acl_tx++;
         break;
 
     case HCI_SCODATA_PKT:
