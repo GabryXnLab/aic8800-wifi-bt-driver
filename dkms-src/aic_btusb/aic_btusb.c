@@ -2841,10 +2841,13 @@ struct aicbsp_info_t aicbsp_info = {
 
 #ifndef CONFIG_USE_FW_REQUEST
 #define FW_PATH_MAX 200
+#ifndef AIC_FW_DIR
+#define AIC_FW_DIR "/lib/firmware"
+#endif
 
 char aic_fw_path[FW_PATH_MAX];
 #if (CONFIG_BLUEDROID == 0) || defined (CONFIG_PLATFORM_UBUNTU)
-static const char* aic_default_fw_path = "/lib/firmware";
+static const char* aic_default_fw_path = AIC_FW_DIR;
 #else
 static const char* aic_default_fw_path = "/vendor/etc/firmware";
 #endif

@@ -4422,7 +4422,7 @@ cfg80211_chandef_identical(const struct cfg80211_chan_def *chandef1,
 }
 #endif
 
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(6, 13, 0))
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(6, 13, 0)) || defined(AIC_MONITOR_CHAN_HAS_DEV)
 static int rwnx_cfg80211_set_monitor_channel(struct wiphy *wiphy, struct net_device *dev,
                                              struct cfg80211_chan_def *chandef)
 #else
@@ -4482,7 +4482,7 @@ static int rwnx_cfg80211_set_monitor_channel(struct wiphy *wiphy,
 }
 
 
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(6, 13, 0))
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(6, 13, 0)) || defined(AIC_MONITOR_CHAN_HAS_DEV)
 int rwnx_cfg80211_set_monitor_channel_(struct wiphy *wiphy,
                                              struct net_device *dev,
                                              struct cfg80211_chan_def *chandef)
@@ -4612,7 +4612,7 @@ int radio_idx,
 static int rwnx_cfg80211_get_tx_power(struct wiphy *wiphy,
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(3, 8, 0)
  struct wireless_dev *wdev,
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(7, 0, 0)
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(7, 0, 0) || defined(AIC_GET_TX_POWER_HAS_RADIO)
  int radio_idx,
 #endif
 #if LINUX_VERSION_CODE >= KERNEL_VERSION (6, 14, 0)
@@ -5011,7 +5011,7 @@ static int rwnx_cfg80211_get_channel(struct wiphy *wiphy,
     if (rwnx_vif->vif_index == rwnx_hw->monitor_vif)
     {
         //retrieve channel from firmware
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(6, 13, 0))
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(6, 13, 0)) || defined(AIC_MONITOR_CHAN_HAS_DEV)
         rwnx_cfg80211_set_monitor_channel(wiphy, wdev->netdev, NULL);
 #else
         rwnx_cfg80211_set_monitor_channel(wiphy, NULL);

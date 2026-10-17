@@ -5,6 +5,6 @@ ConditionPathExists=/etc/usb_modeswitch.d/1111:1111
 
 [Service]
 Type=oneshot
-ExecStartPre=/usr/bin/sleep 2
-ExecStart=/usr/sbin/usb_modeswitch -c /etc/usb_modeswitch.d/1111:1111
+ExecStartPre=sleep 2
+ExecStart=usb_modeswitch -c /etc/usb_modeswitch.d/1111:1111
 TimeoutStartSec=30

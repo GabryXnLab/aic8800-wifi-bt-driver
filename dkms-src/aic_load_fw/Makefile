@@ -18,6 +18,10 @@ CONFIG_PREALLOC_TXQ ?= y
 CONFIG_BAND_STEERING = n
 CONFIG_PRBREQ_REPORT = n
 
+ifneq ($(AIC_FW_DIR),)
+ccflags-y += -DAIC_FW_DIR=\"$(AIC_FW_DIR)\"
+endif
+
 # Platform support list
 CONFIG_PLATFORM_ROCKCHIP ?= n
 CONFIG_PLATFORM_ALLWINNER ?= n
