@@ -131,6 +131,7 @@ struct btusb_data {
     __u8 cmdreq_type;
 
     unsigned int sco_num;
+    unsigned int air_mode;
     int isoc_altsetting;
     int suspend_count;
     uint16_t sco_handle;
@@ -406,14 +407,6 @@ static void print_command(struct sk_buff *skb)
 }
 
 
-enum CODEC_TYPE{
-    CODEC_CVSD,
-    CODEC_MSBC,
-};
-
-static enum CODEC_TYPE codec_type = CODEC_CVSD;
-static void set_select_msbc(enum CODEC_TYPE type);
-static enum CODEC_TYPE check_select_msbc(void);
 int send_hci_cmd(firmware_info *fw_info);
 
 
@@ -467,7 +460,6 @@ static int bypass_event(struct sk_buff *skb)
                     if (SCO_NUM > 0){
                         SCO_NUM = 0;
                         hdev->notify(hdev, 0);
-                        set_select_msbc(CODEC_CVSD);
                     }
                 }
             }
@@ -3743,51 +3735,6 @@ static int inc_tx(struct btusb_data *data)
     return rv;
 }
 
-static void check_sco_event(struct urb *urb)
-{
-    u8* opcode = (u8*)(urb->transfer_buffer);
-    u8 status;
-    static uint16_t sco_handle = 0;
-    uint16_t handle;
-    u8 air_mode = 0;
-    struct hci_dev *hdev = urb->context;
-
-    switch (*opcode) {
-    case HCI_EV_SYNC_CONN_COMPLETE:
-        AICBT_INFO("%s: HCI_EV_SYNC_CONN_COMPLETE(0x%02x)", __func__, *opcode);
-        status = *(opcode + 2);
-        sco_handle = *(opcode + 3) | *(opcode + 4) << 8;
-        air_mode = *(opcode + 18);
-		printk("%s status:%d,air_mode:%d \r\n", __func__, status,air_mode);
-        if (status == 0) {
-            SCO_NUM++;
-            if (air_mode == 0x03) {
-                set_select_msbc(CODEC_MSBC);
-                hdev->voice_setting = 0x43;
-            }else{
-                hdev->voice_setting = 0x60;
-            }
-            hdev->notify(hdev, 0);
-            //schedule_work(&data->work);
-        }
-        break;
-    case HCI_EV_DISCONN_COMPLETE:
-        AICBT_INFO("%s: HCI_EV_DISCONN_COMPLETE(0x%02x)", __func__, *opcode);
-        status = *(opcode + 2);
-        handle = *(opcode + 3) | *(opcode + 4) << 8;
-        if (status == 0 && sco_handle == handle) {
-            SCO_NUM--;
-			hdev->notify(hdev, 0);
-            set_select_msbc(CODEC_CVSD);
-            //schedule_work(&data->work);
-        }
-        break;
-    default:
-        AICBT_DBG("%s: event 0x%02x", __func__, *opcode);
-        break;
-    }
-}
-
 #if (CONFIG_BLUEDROID == 0)
 #if HCI_VERSION_CODE >= KERNEL_VERSION(3, 18, 0)
 static inline void btusb_free_frags(struct btusb_data *data)
@@ -4011,7 +3958,6 @@ static void btusb_intr_complete(struct urb *urb)
 			hdev->stat.err_rx++;
 		}
 #endif
-		check_sco_event(urb);
     }
     /* Avoid suspend failed when usb_kill_urb */
     else if(urb->status == -ENOENT)    {
@@ -4722,6 +4668,7 @@ static void btusb_notify(struct hci_dev *hdev, unsigned int evt)
 
     if (SCO_NUM != data->sco_num) {
         data->sco_num = SCO_NUM;
+        data->air_mode = evt;
         schedule_work(&data->work);
     }
 }
@@ -4779,24 +4726,12 @@ static inline int set_isoc_interface(struct hci_dev *hdev, int altsetting)
     return 0;
 }
 
-static void set_select_msbc(enum CODEC_TYPE type)
-{
-    printk("%s codec type = %d", __func__, (int)type);
-    codec_type = type;
-}
-
-static enum CODEC_TYPE check_select_msbc(void)
-{
-    return codec_type;
-}
-
 static void btusb_work(struct work_struct *work)
 {
     struct btusb_data *data = container_of(work, struct btusb_data, work);
     struct hci_dev *hdev = data->hdev;
     int err;
     int new_alts;
-	printk("%s data->sco_num:%d \r\n", __func__, data->sco_num);
 	
     if (data->sco_num > 0) {
         if (!test_bit(BTUSB_DID_ISO_RESUME, &data->flags)) {
@@ -4812,29 +4747,18 @@ static void btusb_work(struct work_struct *work)
             set_bit(BTUSB_DID_ISO_RESUME, &data->flags);
         }
 
-        AICBT_INFO("%s voice settings = 0x%04x", __func__, hdev->voice_setting);
-        if (!(hdev->voice_setting & 0x0003)) {
-            if(data->sco_num == 1)
-                if(check_select_msbc()) {
-                    new_alts = 1;
-                } else {
-                    new_alts = 2;
-                }
-            else {
-              AICBT_INFO("%s: we don't support mutiple sco link for cvsd", __func__);
-              return;
-            }
-        } else{
-            if(check_select_msbc()) {
-                if(data->sco_num == 1)
-                    new_alts = 1;
-                else {
-                    AICBT_INFO("%s: we don't support mutiple sco link for msbc", __func__);
-                    return;
-                }
-            } else {
-                new_alts = 2;
-            }
+        /* Come btusb: il core dice l'air mode in notify(). Transparent = mSBC/LC3 (parlato
+         * a banda larga), un solo link; l'interfaccia isocrona di questa chiavetta arriva
+         * a alt 5 (49 byte), non ha alt 6. */
+        if (data->air_mode == HCI_NOTIFY_ENABLE_SCO_TRANSP) {
+            new_alts = 1;
+        } else if (hdev->voice_setting & 0x0020) {
+            static const int alts[3] = { 2, 4, 5 };
+            unsigned int sco_idx = min_t(unsigned int, data->sco_num - 1,
+                                         ARRAY_SIZE(alts) - 1);
+            new_alts = alts[sco_idx];
+        } else {
+            new_alts = data->sco_num;
         }
         if (data->isoc_altsetting != new_alts) {
 
@@ -5169,6 +5093,16 @@ static int btusb_probe(struct usb_interface *intf, const struct usb_device_id *i
     hdev->driver_data = data;
     hdev->destruct = btusb_destruct;
     hdev->owner = THIS_MODULE;
+#endif
+
+#if (CONFIG_BLUEDROID == 0) && LINUX_VERSION_CODE >= KERNEL_VERSION(5, 8, 0)
+    /* Il controller ha il trasporto SCO trasparente e l'Enhanced Setup Synchronous Connection
+     * (verificato con Read Local Supported Commands), che servono a mSBC. */
+#ifdef AIC_HAS_HCI_SET_QUIRK
+    hci_set_quirk(hdev, HCI_QUIRK_WIDEBAND_SPEECH_SUPPORTED);
+#else
+    set_bit(HCI_QUIRK_WIDEBAND_SPEECH_SUPPORTED, &hdev->quirks);
+#endif
 #endif
 
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(3, 7, 1)

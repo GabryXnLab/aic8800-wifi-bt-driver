@@ -23,6 +23,12 @@ ifneq ($(and $(CFG80211_H),$(shell tr -s '[:space:]' ' ' < $(CFG80211_H) | grep 
 AIC_CFLAGS += -DAIC_GET_TX_POWER_HAS_RADIO
 endif
 
+# hci_set_quirk() sostituisce set_bit(..., &hdev->quirks) dal 6.16 (anche retroportato).
+HCI_CORE_H := $(firstword $(wildcard $(KDIR)/include/net/bluetooth/hci_core.h $(KDIR)/source/include/net/bluetooth/hci_core.h))
+ifneq ($(and $(HCI_CORE_H),$(shell grep -w hci_set_quirk $(HCI_CORE_H))),)
+AIC_CFLAGS += -DAIC_HAS_HCI_SET_QUIRK
+endif
+
 KMAKE = $(MAKE) -C $(KDIR) $(KOPTS) AIC_FW_DIR=$(AIC_FW_DIR) KCFLAGS="$(AIC_CFLAGS)"
 
 .PHONY: modules install clean
