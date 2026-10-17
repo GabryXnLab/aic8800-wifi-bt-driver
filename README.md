@@ -167,3 +167,9 @@ sudo bash uninstall.sh
   Nei test riusciti le risposte SCSI riportavano comunque `status 1` e il
   reset poteva riportare `-5`/`-4` mentre il dispositivo cambiava identità.
   I dettagli sono in `journalctl -b -u aic8800-modeswitch.service`.
+
+## Interfaccia per userspace
+
+Il modulo Wi-Fi espone coesistenza Wi-Fi/Bluetooth regolabile a caldo, versioni, temperatura,
+statistiche ed eventi come comandi vendor nl80211 (`iw dev wlan0 vendor ...`). ABI, esempi e
+misure in [`docs/interfaccia-vendor.md`](docs/interfaccia-vendor.md).

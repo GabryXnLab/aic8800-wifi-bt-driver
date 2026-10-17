@@ -24,6 +24,7 @@ dkms-src/             # sorgenti dei tre moduli, un unico pacchetto DKMS (dkms.c
   aic8800_fdrv/       # driver Wi-Fi (cfg80211/FullMAC, prefisso rwnx_), dipende dai simboli di aic_load_fw
   aic_btusb/          # driver Bluetooth (sostituisce btusb per questa chiavetta)
 flake.nix nix/        # lib.mkDriver, nixosModules.default (hardware.aic8800.enable), packages.driver-<kernel>
+docs/                 # interfaccia-vendor.md: ABI vendor nl80211 per userspace (aicctl)
 firmware/             # blob .bin di aic8800D80, copiati in <fw>/aic8800D80/
 usb_modeswitch/ systemd/ udev/ modprobe/ modules-load.d/   # da 1111:1111 a a69c:8d80 -> 8d81
 install.sh uninstall.sh
@@ -92,6 +93,10 @@ backtick in un file e `git commit -F`.
   `firmware/`. Ogni modifica ai sorgenti C va riprovata con `nix build .#driver-6_12 .#driver-6_6
   .#driver-6_1 .#driver-7_2` (almeno) oltre che sul kernel di ohos.
 - Una firma che cambia tra kernel: sonda sull'header nel Makefile radice (vedi sopra).
+- Interfaccia vendor nl80211 di fdrv (OUI `0x414943`: coex a caldo, info, statistiche, eventi): ABI in
+  `docs/interfaccia-vendor.md`, codice in `aic_vendor.{c,h}`. `iw vendor send` non marca i dati come
+  annidati: i comandi vendor con dati usano `VENDOR_CMD_RAW_DATA` e validano da soli. Il firmware
+  non ha un get per la coex: lo stato vive in `rwnx_hw->coex`.
 - Moduli in `/sys/module/<nome>/parameters`; debugfs di fdrv solo con `CONFIG_DEBUG_FS`.
 - Su ohos la chiavetta è anche l'unico Bluetooth (cassa «Eubiq BTS»): dopo ogni prova controllare
   `bluetoothctl show` e `nmcli device`; `eno1` mantiene la rete.
