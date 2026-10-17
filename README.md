@@ -127,13 +127,22 @@ dkms status              # aic8800/radxa, ..., installed (x3 moduli)
 sudo bash uninstall.sh
 ```
 
+## Distribuzioni e kernel
+
+- `install.sh` rileva `apt`, `dnf`, `pacman` o `zypper` e installa dkms, toolchain, header e
+  `usb_modeswitch`; altrove `AIC_SKIP_DEPS=1` dopo aver installato a mano i pacchetti.
+- Senza DKMS: `make -C dkms-src [KVER=<release>] [KDIR=<build del kernel>] [AIC_FW_DIR=<dir>]`,
+  poi `sudo make -C dkms-src install`. Kernel compilati con Clang (CachyOS) sono riconosciuti.
+- NixOS: `inputs.aic8800.url = "github:GabryXnLab/aic8800-wifi-bt-driver"`, nel sistema
+  `imports = [ inputs.aic8800.nixosModules.default ]; hardware.aic8800.enable = true;`.
+- Compilazione verificata (GCC, nixpkgs 26.05) su 5.15, 6.1, 6.6, 6.12, 6.18 e 7.2:
+  `nix build .#driver-6_12` (e `_5_15`, `_6_1`, `_6_6`, `_6_18`, `_7_2`).
+
 ## Limitazioni note
 
-- Il funzionamento (WiFi + Bluetooth) è verificato sul kernel
-  `7.0.0-30-generic`; sui kernel 7.1/7.2 è verificata solo la compilazione.
-- `install.sh` è scritto per Ubuntu/Debian (`apt`, `dpkg`). Su altre
-  distribuzioni i passi sono gli stessi, ma i pacchetti vanno installati a mano
-  (su Arch: `dkms`, `linux-*-headers`, `usb_modeswitch`, `base-devel`).
+- Il funzionamento (Wi-Fi + Bluetooth) è verificato su Ubuntu `7.0.0-30-generic` e su NixOS con
+  il kernel CachyOS `7.2.9` (Clang/ThinLTO). Sugli altri kernel è verificata la compilazione
+  (vedi "Distribuzioni e kernel").
 - Su schede con poca alimentazione USB (provato su ODROID-U3) il passaggio
   di modalità può far cadere l'intero bus USB (`disabled by hub (EMI?)`),
   compresa la scheda di rete se è collegata allo stesso bus: in quel caso
