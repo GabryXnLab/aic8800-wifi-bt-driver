@@ -1,5 +1,6 @@
 #include "aic_vendor.h"
 #include "rwnx_defs.h"
+#include "rwnx_msg_tx.h"
 #include <linux/init.h>
 #include <linux/kernel.h>
 #include <linux/slab.h>
@@ -786,6 +787,209 @@ aicwf_cfg80211_subcmd_set_mac_policy[WIFI_VENDOR_ATTR_DRIVER_MAX + 1] = {
 	[WIFI_VENDOR_ATTR_DRIVER_MAC_ADDR] = { .type = NLA_MSECS, .len  = ETH_ALEN },
 };
 
+/* Valori iniziali inviati al firmware a ogni avvio; a caldo si cambiano col comando vendor COEX_SET. */
+static bool coex_bt_on = true;
+module_param(coex_bt_on, bool, 0444);
+static bool coex_disable_coexnull;
+module_param(coex_disable_coexnull, bool, 0444);
+static bool coex_enable_nullcts = true;
+module_param(coex_enable_nullcts, bool, 0444);
+static bool coex_enable_periodic_timer;
+module_param(coex_enable_periodic_timer, bool, 0444);
+static bool coex_timeslot_set;
+module_param(coex_timeslot_set, bool, 0444);
+static uint coex_timeslot0;
+module_param(coex_timeslot0, uint, 0444);
+static uint coex_timeslot1;
+module_param(coex_timeslot1, uint, 0444);
+
+static int aic_coex_put(struct sk_buff *skb, const struct aic_coex_cfg *c)
+{
+	return nla_put_u8(skb, AIC_ATTR_COEX_BT_ON, c->bt_on) ||
+	       nla_put_u8(skb, AIC_ATTR_COEX_DISABLE_COEXNULL, c->disable_coexnull) ||
+	       nla_put_u8(skb, AIC_ATTR_COEX_ENABLE_NULLCTS, c->enable_nullcts) ||
+	       nla_put_u8(skb, AIC_ATTR_COEX_ENABLE_PERIODIC_TIMER, c->enable_periodic_timer) ||
+	       nla_put_u8(skb, AIC_ATTR_COEX_TIMESLOT_SET, c->timeslot_set) ||
+	       nla_put_u32(skb, AIC_ATTR_COEX_TIMESLOT0, c->timeslot[0]) ||
+	       nla_put_u32(skb, AIC_ATTR_COEX_TIMESLOT1, c->timeslot[1]) ||
+	       nla_put_u8(skb, AIC_ATTR_COEX_APPLIED, c->applied);
+}
+
+static int aic_vendor_reply_coex(struct wiphy *wiphy, const struct aic_coex_cfg *c)
+{
+	struct sk_buff *reply = cfg80211_vendor_cmd_alloc_reply_skb(wiphy, 128);
+
+	if (!reply)
+		return -ENOMEM;
+	if (aic_coex_put(reply, c)) {
+		kfree_skb(reply);
+		return -EMSGSIZE;
+	}
+	return cfg80211_vendor_cmd_reply(reply);
+}
+
+static int aic_vendor_coex_get(struct wiphy *wiphy, struct wireless_dev *wdev,
+	const void *data, int len)
+{
+	struct rwnx_hw *rwnx_hw = wiphy_priv(wiphy);
+
+	return aic_vendor_reply_coex(wiphy, &rwnx_hw->coex);
+}
+
+static int aic_vendor_coex_set(struct wiphy *wiphy, struct wireless_dev *wdev,
+	const void *data, int len)
+{
+	struct rwnx_hw *rwnx_hw = wiphy_priv(wiphy);
+	struct aic_coex_cfg cfg = rwnx_hw->coex;
+	const struct nlattr *iter;
+	int rem, ret;
+
+	nla_for_each_attr(iter, data, len, rem) {
+		u8 *flag = NULL;
+
+		switch (nla_type(iter)) {
+		case AIC_ATTR_COEX_BT_ON:			flag = &cfg.bt_on; break;
+		case AIC_ATTR_COEX_DISABLE_COEXNULL:		flag = &cfg.disable_coexnull; break;
+		case AIC_ATTR_COEX_ENABLE_NULLCTS:		flag = &cfg.enable_nullcts; break;
+		case AIC_ATTR_COEX_ENABLE_PERIODIC_TIMER:	flag = &cfg.enable_periodic_timer; break;
+		case AIC_ATTR_COEX_TIMESLOT_SET:		flag = &cfg.timeslot_set; break;
+		case AIC_ATTR_COEX_TIMESLOT0:
+		case AIC_ATTR_COEX_TIMESLOT1:
+			if (nla_len(iter) != sizeof(u32))
+				return -EINVAL;
+			cfg.timeslot[nla_type(iter) == AIC_ATTR_COEX_TIMESLOT1] = nla_get_u32(iter);
+			break;
+		default:
+			return -EINVAL;
+		}
+		if (flag) {
+			if (nla_len(iter) != sizeof(u8) || nla_get_u8(iter) > 1)
+				return -EINVAL;
+			*flag = nla_get_u8(iter);
+		}
+	}
+
+	/* a firmware spento il valore vale dal prossimo avvio (rwnx_open) */
+	cfg.applied = false;
+	if (rwnx_hw->vif_started) {
+		ret = rwnx_send_coex_req(rwnx_hw, &cfg);
+		if (ret)
+			return ret;
+		cfg.applied = true;
+	}
+	rwnx_hw->coex = cfg;
+
+	return aic_vendor_reply_coex(wiphy, &rwnx_hw->coex);
+}
+
+static int aic_vendor_get_info(struct wiphy *wiphy, struct wireless_dev *wdev,
+	const void *data, int len)
+{
+	struct rwnx_hw *rwnx_hw = wiphy_priv(wiphy);
+	struct sk_buff *reply;
+	s8_l temp = 0;
+	bool have_temp = false;
+
+	if (rwnx_hw->vif_started && !rwnx_send_get_temp_req(rwnx_hw, &temp))
+		have_temp = true;
+
+	reply = cfg80211_vendor_cmd_alloc_reply_skb(wiphy, 256);
+	if (!reply)
+		return -ENOMEM;
+
+	if (nla_put_string(reply, AIC_ATTR_DRIVER_VERSION, RWNX_VERS_BANNER) ||
+	    nla_put_string(reply, AIC_ATTR_FW_VERSION, rwnx_hw->fw_version_full) ||
+	    nla_put_u8(reply, AIC_ATTR_CHIP_ID, rwnx_hw->usbdev->chipid) ||
+	    nla_put_u8(reply, AIC_ATTR_BAND_5G, rwnx_hw->band_5g_support) ||
+	    nla_put_u8(reply, AIC_ATTR_IF_RUNNING, rwnx_hw->vif_started) ||
+	    (have_temp && nla_put_u8(reply, AIC_ATTR_TEMP_C, temp))) {
+		kfree_skb(reply);
+		return -EMSGSIZE;
+	}
+	return cfg80211_vendor_cmd_reply(reply);
+}
+
+static u32 aic_chan_width_mhz(enum nl80211_chan_width w)
+{
+	switch (w) {
+	case NL80211_CHAN_WIDTH_5:	return 5;
+	case NL80211_CHAN_WIDTH_10:	return 10;
+	case NL80211_CHAN_WIDTH_40:	return 40;
+	case NL80211_CHAN_WIDTH_80:	return 80;
+	case NL80211_CHAN_WIDTH_80P80:
+	case NL80211_CHAN_WIDTH_160:	return 160;
+	default:			return 20;
+	}
+}
+
+static int aic_vendor_get_stats(struct wiphy *wiphy, struct wireless_dev *wdev,
+	const void *data, int len)
+{
+	struct rwnx_hw *rwnx_hw = wiphy_priv(wiphy);
+	struct rwnx_vif *vif = netdev_priv(wdev->netdev);
+	struct rtnl_link_stats64 st;
+	struct mm_get_sta_info_cfm sta = {0};
+	struct sk_buff *reply;
+	bool have_sta = false, have_chan = false;
+	struct cfg80211_chan_def *cd = NULL;
+
+	dev_get_stats(wdev->netdev, &st);
+
+	if (rwnx_hw->chanctx_table[rwnx_hw->cur_chanctx].count) {
+		cd = &rwnx_hw->chanctx_table[rwnx_hw->cur_chanctx].chan_def;
+		have_chan = cd->chan;
+	}
+	if (vif->sta.ap && wdev->iftype == NL80211_IFTYPE_STATION)
+		have_sta = !rwnx_send_get_sta_info_req(rwnx_hw, vif->sta.ap->sta_idx, &sta);
+
+	reply = cfg80211_vendor_cmd_alloc_reply_skb(wiphy, 512);
+	if (!reply)
+		return -ENOMEM;
+
+#define PUT64(attr, v) nla_put_u64_64bit(reply, attr, v, AIC_ATTR_PAD)
+	if (PUT64(AIC_ATTR_NET_RX_PACKETS, st.rx_packets) ||
+	    PUT64(AIC_ATTR_NET_TX_PACKETS, st.tx_packets) ||
+	    PUT64(AIC_ATTR_NET_RX_BYTES, st.rx_bytes) ||
+	    PUT64(AIC_ATTR_NET_TX_BYTES, st.tx_bytes) ||
+	    PUT64(AIC_ATTR_NET_RX_ERRORS, st.rx_errors) ||
+	    PUT64(AIC_ATTR_NET_TX_ERRORS, st.tx_errors) ||
+	    PUT64(AIC_ATTR_NET_RX_DROPPED, st.rx_dropped) ||
+	    PUT64(AIC_ATTR_NET_TX_DROPPED, st.tx_dropped))
+		goto fail;
+#undef PUT64
+
+	if (have_chan &&
+	    (nla_put_u32(reply, AIC_ATTR_CHAN_FREQ, cd->chan->center_freq) ||
+	     nla_put_u32(reply, AIC_ATTR_CHAN_CENTER_FREQ1, cd->center_freq1) ||
+	     nla_put_u32(reply, AIC_ATTR_CHAN_WIDTH, aic_chan_width_mhz(cd->width))))
+		goto fail;
+
+	if (have_sta &&
+	    (nla_put_u8(reply, AIC_ATTR_STA_RSSI, sta.rssi) ||
+	     nla_put_u32(reply, AIC_ATTR_STA_RATE_INFO, sta.rate_info) ||
+	     nla_put_u32(reply, AIC_ATTR_STA_TX_FAILED, sta.txfailed) ||
+	     nla_put_u32(reply, AIC_ATTR_STA_CHAN_TIME, sta.chan_time) ||
+	     nla_put_u32(reply, AIC_ATTR_STA_CHAN_BUSY_TIME, sta.chan_busy_time) ||
+	     nla_put_u32(reply, AIC_ATTR_STA_CHAN_TX_BUSY_TIME, sta.chan_tx_busy_time) ||
+	     nla_put_u32(reply, AIC_ATTR_STA_ACK_FAIL, sta.ack_fail_stat) ||
+	     nla_put_u32(reply, AIC_ATTR_STA_ACK_SUCC, sta.ack_succ_stat)))
+		goto fail;
+
+	return cfg80211_vendor_cmd_reply(reply);
+fail:
+	kfree_skb(reply);
+	return -EMSGSIZE;
+}
+
+void aicwf_vendor_event(struct rwnx_hw *rwnx_hw, enum aic_vendor_event ev)
+{
+	struct sk_buff *skb;
+
+	skb = cfg80211_vendor_event_alloc(rwnx_hw->wiphy, NULL, 0, ev, GFP_ATOMIC);
+	if (skb)
+		cfg80211_vendor_event(skb, GFP_ATOMIC);
+}
+
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 4, 0)
 static int aicwf_dump_interface(struct wiphy *wiphy,
 				struct wireless_dev *wdev, struct sk_buff *skb,
@@ -1060,16 +1264,75 @@ const struct wiphy_vendor_command aicwf_vendor_cmd[] = {
         .maxattr = WIFI_VENDOR_ATTR_DRIVER_MAX,
 #endif
     },
+	{
+		{
+			.vendor_id = AIC_VENDOR_OUI,
+			.subcmd = AIC_VENDOR_SUBCMD_COEX_GET
+		},
+		.flags = 0,
+		.doit = aic_vendor_coex_get,
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 3, 0)
+		.policy = VENDOR_CMD_RAW_DATA,
+#endif
+	},
+	{
+		{
+			.vendor_id = AIC_VENDOR_OUI,
+			.subcmd = AIC_VENDOR_SUBCMD_COEX_SET
+		},
+		.flags = 0,
+		.doit = aic_vendor_coex_set,
+		/* con una policy il kernel pretende dati NLA_F_NESTED, che `iw vendor send` non marca */
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 3, 0)
+		.policy = VENDOR_CMD_RAW_DATA,
+#endif
+	},
+	{
+		{
+			.vendor_id = AIC_VENDOR_OUI,
+			.subcmd = AIC_VENDOR_SUBCMD_GET_INFO
+		},
+		.flags = 0,
+		.doit = aic_vendor_get_info,
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 3, 0)
+		.policy = VENDOR_CMD_RAW_DATA,
+#endif
+	},
+	{
+		{
+			.vendor_id = AIC_VENDOR_OUI,
+			.subcmd = AIC_VENDOR_SUBCMD_GET_STATS
+		},
+		.flags = WIPHY_VENDOR_CMD_NEED_WDEV | WIPHY_VENDOR_CMD_NEED_NETDEV |
+			 WIPHY_VENDOR_CMD_NEED_RUNNING,
+		.doit = aic_vendor_get_stats,
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 3, 0)
+		.policy = VENDOR_CMD_RAW_DATA,
+#endif
+	},
 };
 #endif
 
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(3, 14, 0)
 static const struct nl80211_vendor_cmd_info aicwf_vendor_events[] = {
+	[AIC_VENDOR_EVENT_COEX_TS_TIMEOUT] = { .vendor_id = AIC_VENDOR_OUI, .subcmd = AIC_VENDOR_EVENT_COEX_TS_TIMEOUT },
+	[AIC_VENDOR_EVENT_FW_PANIC]        = { .vendor_id = AIC_VENDOR_OUI, .subcmd = AIC_VENDOR_EVENT_FW_PANIC },
+	[AIC_VENDOR_EVENT_FW_ASSERT]       = { .vendor_id = AIC_VENDOR_OUI, .subcmd = AIC_VENDOR_EVENT_FW_ASSERT },
 };
 #endif
 
 int aicwf_vendor_init(struct wiphy *wiphy)
 {
+	struct rwnx_hw *rwnx_hw = wiphy_priv(wiphy);
+
+	rwnx_hw->coex = (struct aic_coex_cfg) {
+		.bt_on = coex_bt_on,
+		.disable_coexnull = coex_disable_coexnull,
+		.enable_nullcts = coex_enable_nullcts,
+		.enable_periodic_timer = coex_enable_periodic_timer,
+		.timeslot_set = coex_timeslot_set,
+		.timeslot = { coex_timeslot0, coex_timeslot1 },
+	};
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(3, 14, 0)
 	wiphy->vendor_commands = aicwf_vendor_cmd;
 	wiphy->n_vendor_commands = ARRAY_SIZE(aicwf_vendor_cmd);

@@ -1369,7 +1369,7 @@ static int rwnx_open(struct net_device *dev)
        }
 #ifdef CONFIG_COEX
 		if (testmode == 0) {
-			rwnx_send_coex_req(rwnx_hw, 0, 1);
+			rwnx_hw->coex.applied = !rwnx_send_coex_req(rwnx_hw, &rwnx_hw->coex);
 		}
 #endif
 
@@ -1661,6 +1661,7 @@ static int rwnx_close(struct net_device *dev)
 
     rwnx_hw->vif_started--;
     if (rwnx_hw->vif_started == 0) {
+        rwnx_hw->coex.applied = false;
         /* This also lets both ipc sides remain in sync before resetting */
         #if 0
         rwnx_ipc_tx_drain(rwnx_hw);
@@ -9120,7 +9121,11 @@ if((g_rwnx_plat->usbdev->chipid == PRODUCT_ID_AIC8801) ||
 	rwnx_hw->band_5g_support = set_start_cfm.is_5g_support;
 
         ret = rwnx_send_get_fw_version_req(rwnx_hw, &fw_version);
-        memcpy(wiphy->fw_version, fw_version.fw_version, fw_version.fw_version_len>32? 32 : fw_version.fw_version_len>32);
+        if (!ret) {
+            memcpy(rwnx_hw->fw_version_full, fw_version.fw_version,
+                   min_t(size_t, fw_version.fw_version_len, sizeof(rwnx_hw->fw_version_full) - 1));
+            strscpy(wiphy->fw_version, rwnx_hw->fw_version_full, sizeof(wiphy->fw_version));
+        }
     	AICWFDBG(LOGINFO, "Firmware Version: %s\r\n", fw_version.fw_version);
 
 	wiphy->bands[NL80211_BAND_2GHZ] = &rwnx_band_2GHz;

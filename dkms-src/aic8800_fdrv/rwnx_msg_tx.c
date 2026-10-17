@@ -1096,7 +1096,7 @@ int rwnx_send_disable_agg_req(struct rwnx_hw *rwnx_hw, u8_l agg_disable, u8_l ag
     return (error);
 };
 
-int rwnx_send_coex_req(struct rwnx_hw *rwnx_hw, u8_l disable_coexnull, u8_l enable_nullcts)
+int rwnx_send_coex_req(struct rwnx_hw *rwnx_hw, const struct aic_coex_cfg *cfg)
 {
     struct mm_set_coex_req *coex_req;
     int error;
@@ -1112,11 +1112,13 @@ int rwnx_send_coex_req(struct rwnx_hw *rwnx_hw, u8_l disable_coexnull, u8_l enab
         return -ENOMEM;
     }
 
-    coex_req->bt_on = 1;
-    coex_req->disable_coexnull = disable_coexnull;
-    coex_req->enable_nullcts = enable_nullcts;
-    coex_req->enable_periodic_timer = 0;
-    coex_req->coex_timeslot_set = 0;
+    coex_req->bt_on = cfg->bt_on;
+    coex_req->disable_coexnull = cfg->disable_coexnull;
+    coex_req->enable_nullcts = cfg->enable_nullcts;
+    coex_req->enable_periodic_timer = cfg->enable_periodic_timer;
+    coex_req->coex_timeslot_set = cfg->timeslot_set;
+    coex_req->coex_timeslot[0] = cfg->timeslot[0];
+    coex_req->coex_timeslot[1] = cfg->timeslot[1];
 
     /* Send the MM_SET_COEX_REQ message to UMAC FW */
     error = rwnx_send_msg(rwnx_hw, coex_req, 1, MM_SET_COEX_CFM, NULL);

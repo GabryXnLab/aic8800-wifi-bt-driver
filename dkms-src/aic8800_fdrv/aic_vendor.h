@@ -348,5 +348,68 @@ int aic_dev_start_mkeep_alive(struct rwnx_hw *rwnx_hw, struct rwnx_vif *rwnx_vif
 int aic_dev_stop_mkeep_alive(struct rwnx_hw *rwnx_hw, struct rwnx_vif *rwnx_vif, u8 mkeep_alive_id);
 int aicwf_vendor_init(struct wiphy *wiphy);
 
+/*
+ * ABI vendor di questo driver (documentata in docs/interfaccia-vendor.md).
+ * L'OUI non e' registrato: sono i tre byte ASCII "AIC", scelti per non collidere
+ * con quelli Android/Broadcom gia' usati sopra.
+ */
+#define AIC_VENDOR_OUI 0x414943
+
+enum aic_vendor_subcmd {
+	AIC_VENDOR_SUBCMD_COEX_GET = 1,
+	AIC_VENDOR_SUBCMD_COEX_SET = 2,
+	AIC_VENDOR_SUBCMD_GET_INFO = 3,
+	AIC_VENDOR_SUBCMD_GET_STATS = 4,
+};
+
+/* indice nell'array degli eventi vendor del wiphy */
+enum aic_vendor_event {
+	AIC_VENDOR_EVENT_COEX_TS_TIMEOUT = 0,
+	AIC_VENDOR_EVENT_FW_PANIC = 1,
+	AIC_VENDOR_EVENT_FW_ASSERT = 2,
+};
+
+enum aic_vendor_attr {
+	AIC_ATTR_UNSPEC = 0,
+	AIC_ATTR_COEX_BT_ON,			/* u8 0/1 */
+	AIC_ATTR_COEX_DISABLE_COEXNULL,		/* u8 0/1 */
+	AIC_ATTR_COEX_ENABLE_NULLCTS,		/* u8 0/1 */
+	AIC_ATTR_COEX_ENABLE_PERIODIC_TIMER,	/* u8 0/1 */
+	AIC_ATTR_COEX_TIMESLOT_SET,		/* u8 0/1 */
+	AIC_ATTR_COEX_TIMESLOT0,		/* u32 */
+	AIC_ATTR_COEX_TIMESLOT1,		/* u32 */
+	AIC_ATTR_COEX_APPLIED,			/* u8, solo risposta: 1 se il firmware ha ricevuto il valore */
+	AIC_ATTR_DRIVER_VERSION,		/* string */
+	AIC_ATTR_FW_VERSION,			/* string */
+	AIC_ATTR_CHIP_ID,			/* u8, enum PRODUCT_ID_* di aicwf_usb.h */
+	AIC_ATTR_BAND_5G,			/* u8 0/1 */
+	AIC_ATTR_IF_RUNNING,			/* u8: numero di interfacce aperte (firmware avviato se > 0) */
+	AIC_ATTR_TEMP_C,			/* s8, gradi C; assente se il firmware non risponde */
+	AIC_ATTR_CHAN_FREQ,			/* u32 MHz, canale primario in uso */
+	AIC_ATTR_CHAN_CENTER_FREQ1,		/* u32 MHz */
+	AIC_ATTR_CHAN_WIDTH,			/* u32 MHz */
+	AIC_ATTR_NET_RX_PACKETS,		/* u64 */
+	AIC_ATTR_NET_TX_PACKETS,		/* u64 */
+	AIC_ATTR_NET_RX_BYTES,			/* u64 */
+	AIC_ATTR_NET_TX_BYTES,			/* u64 */
+	AIC_ATTR_NET_RX_ERRORS,			/* u64 */
+	AIC_ATTR_NET_TX_ERRORS,			/* u64 */
+	AIC_ATTR_NET_RX_DROPPED,		/* u64 */
+	AIC_ATTR_NET_TX_DROPPED,		/* u64 */
+	AIC_ATTR_STA_RSSI,			/* s8 dBm, solo se associata */
+	AIC_ATTR_STA_RATE_INFO,			/* u32 grezzo (union rwnx_rate_ctrl_info) */
+	AIC_ATTR_STA_TX_FAILED,			/* u32 */
+	AIC_ATTR_STA_CHAN_TIME,			/* u32 */
+	AIC_ATTR_STA_CHAN_BUSY_TIME,		/* u32 */
+	AIC_ATTR_STA_CHAN_TX_BUSY_TIME,		/* u32 */
+	AIC_ATTR_STA_ACK_FAIL,			/* u32 */
+	AIC_ATTR_STA_ACK_SUCC,			/* u32 */
+	AIC_ATTR_PAD,				/* padding dei u64 */
+	AIC_ATTR_AFTER_LAST,
+	AIC_ATTR_MAX = AIC_ATTR_AFTER_LAST - 1
+};
+
+void aicwf_vendor_event(struct rwnx_hw *rwnx_hw, enum aic_vendor_event ev);
+
 #endif /* _AIC_VENDOR_H */
 

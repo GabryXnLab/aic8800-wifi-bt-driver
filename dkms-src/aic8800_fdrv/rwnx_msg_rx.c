@@ -29,6 +29,7 @@
 #include "aicwf_wext_linux.h"
 #endif
 #include "rwnx_msg_rx.h"
+#include "aic_vendor.h"
 
 void rwnx_cfg80211_unlink_bss(struct rwnx_hw *rwnx_hw, struct rwnx_vif *rwnx_vif);
 
@@ -1635,6 +1636,15 @@ static inline int rwnx_fw_panic_ind(struct rwnx_hw *rwnx_hw,
         printk("%08x, %08x, %08x, %08x\n", msp[i], msp[i+1], msp[i+2], msp[i+3]);
     }
 
+    aicwf_vendor_event(rwnx_hw, AIC_VENDOR_EVENT_FW_PANIC);
+    return 0;
+}
+
+static int rwnx_rx_sm_coex_ts_timeout_ind(struct rwnx_hw *rwnx_hw,
+                                          struct rwnx_cmd *cmd,
+                                          struct ipc_e2a_msg *msg)
+{
+    aicwf_vendor_event(rwnx_hw, AIC_VENDOR_EVENT_COEX_TS_TIMEOUT);
     return 0;
 }
 
@@ -1649,6 +1659,7 @@ static inline int rwnx_fw_assert_ind(struct rwnx_hw *rwnx_hw,
     buffer[ind->len] = '\0';
 
     printk("%s: %s\n", __func__, buffer);
+    aicwf_vendor_event(rwnx_hw, AIC_VENDOR_EVENT_FW_ASSERT);
 
     return 0;
 }
@@ -1689,6 +1700,7 @@ static msg_cb_fct sm_hdlrs[MSG_I(SM_MAX)] = {
     [MSG_I(SM_CONNECT_IND)]    = rwnx_rx_sm_connect_ind,
     [MSG_I(SM_DISCONNECT_IND)] = rwnx_rx_sm_disconnect_ind,
     [MSG_I(SM_EXTERNAL_AUTH_REQUIRED_IND)] = rwnx_rx_sm_external_auth_required_ind,
+    [MSG_I(SM_COEX_TS_TIMEOUT_IND)] = rwnx_rx_sm_coex_ts_timeout_ind,
 };
 
 static msg_cb_fct apm_hdlrs[MSG_I(APM_MAX)] = {

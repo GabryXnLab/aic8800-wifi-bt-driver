@@ -694,6 +694,17 @@ struct rwnx_survey_info {
 #define RWNX_INVALID_STA 0xFF
 
 /* Structure containing channel context information */
+/* Il firmware non ha un "get" per MM_SET_COEX_REQ: l'ultimo valore inviato si ricorda qui. */
+struct aic_coex_cfg {
+    u8 bt_on;
+    u8 disable_coexnull;
+    u8 enable_nullcts;
+    u8 enable_periodic_timer;
+    u8 timeslot_set;
+    u32 timeslot[2];
+    bool applied;
+};
+
 struct rwnx_chanctx {
     struct cfg80211_chan_def chan_def; /* channel description */
     u8 count;                          /* number of vif using this ctxt */
@@ -837,6 +848,8 @@ struct rwnx_hw {
 
     u64 avail_idx_map;
     u8 vif_started;
+    struct aic_coex_cfg coex;
+    char fw_version_full[64];
     bool adding_sta;
     struct rwnx_phy_info phy;
 
