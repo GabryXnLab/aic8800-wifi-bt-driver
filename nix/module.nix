@@ -13,6 +13,7 @@ in
 
   config = lib.mkIf cfg.enable {
     boot.extraModulePackages = [ driver ];
+    environment.systemPackages = [ (pkgs.callPackage ./aicctl.nix { inherit self; }) ];
 
     # btusb generico non sa inizializzare il controller BT AIC (timeout su HCI_Reset):
     # aic_btusb deve prendersi il dispositivo prima.

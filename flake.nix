@@ -27,6 +27,7 @@
         nixpkgs.lib.mapAttrs' (name: kp: {
           name = "driver-${name}";
           value = self.lib.mkDriver { inherit pkgs; kernelPackages = kp; };
-        }) (kernels pkgs));
+        }) (kernels pkgs)
+        // { aicctl = pkgs.callPackage ./nix/aicctl.nix { inherit self; }; });
     };
 }
