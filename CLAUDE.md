@@ -45,11 +45,13 @@ nix build .#driver-6_12                     # matrice: 5_15 6_1 6_6 6_12 6_18 7_
 rsync -a --delete --exclude .git ./ ohos:aic8800-work/ && ssh ohos 'cd aic8800-work && git init -q 2>/dev/null; git add -A'
 ssh ohos 'cd aic8800-work && nix build --no-link --print-out-paths --impure --expr "let c = (builtins.getFlake \"/etc/nixos\").nixosConfigurations.ohos; in (builtins.getFlake (toString ./.)).lib.mkDriver { pkgs = c.pkgs; kernelPackages = c.config.boot.kernelPackages; }"'
 # poi, con D=<out>/lib/modules/7.2.9-cachyos/updates/aic8800:
-sudo rmmod aic_btusb aic8800_fdrv aic_load_fw; sudo insmod $D/aic_load_fw.ko; sudo insmod $D/aic8800_fdrv.ko; sudo insmod $D/aic_btusb.ko
+sudo rmmod btusb aic_btusb aic8800_fdrv aic_load_fw; sudo insmod $D/aic_load_fw.ko; sudo insmod $D/aic8800_fdrv.ko; sudo insmod $D/aic_btusb.ko
 ```
 
 Subito dopo `rmmod` fare gli `insmod` (senza pause): la chiavetta si resetta da sola e, se non trova
-i moduli caricati, udev ci carica quelli del sistema avviato. Attendere ~15 s (riappare `wlan0`).
+i moduli caricati, udev ci carica quelli del sistema avviato. Attendere fino a ~45 s (riappare `wlan0`). Serve
+l'`rmmod btusb`: se il `btusb` generico è caricato e si registra prima di `aic_btusb`, prende lui il controller
+(senza il patch BT del firmware) e si prova il modulo sbagliato. Alla fine rifare `modprobe` dei quattro moduli di sistema.
 Verifica che giri il modulo nuovo: `cat /sys/module/aic_load_fw/srcversion` uguale a
 `modinfo -F srcversion $D/aic_load_fw.ko`. Wi-Fi e BT cadono per qualche secondo (ohos ha anche
 `eno1`). Per renderlo definitivo: commit, push, `nix flake update aic8800` in nixos-setup e
@@ -71,6 +73,10 @@ Verifica che giri il modulo nuovo: `cat /sys/module/aic_load_fw/srcversion` ugua
   non basta, `dkms-src/Makefile` guarda `include/net/cfg80211.h` e passa `-DAIC_*` (oggi
   `AIC_MONITOR_CHAN_HAS_DEV`, `AIC_GET_TX_POWER_HAS_RADIO`). Un nuovo errore di firma su un kernel
   stabile si risolve con una sonda nuova, non spostando soglie di versione.
+- Audio voce: `aic_btusb` segue la logica di `btusb` (air mode dal `notify()` del core, alt 1 per mSBC, alt 2/4/5
+  per CVSD multi-link; l'interfaccia isocrona arriva a alt 5, senza alt 6) e dichiara il wideband speech al core.
+  Il conteggio SCO è solo quello del core: non rimettere contatori propri. I dati ISO (CIS/BIS) escono sui bulk
+  come in btusb; la ricezione ISO non è implementata (btusb generico non la gestisce) e non è verificata.
 - `aicbluetooth.c` ha righe CRLF: modificarlo in binario o con strumenti che le preservano.
 - nixpkgs 26.05 non ha più i kernel 6.17, 6.19, 7.0, 7.1 (EOL): la matrice usa quelli presenti.
 - `aic8800_fdrv` usa simboli esportati da `aic_load_fw`: compilare prima `aic_load_fw` e passare
