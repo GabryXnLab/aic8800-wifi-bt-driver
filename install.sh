@@ -43,7 +43,7 @@ if has_id nixos; then
 fi
 
 STEP=1
-TOTAL=6
+TOTAL=7
 
 ###############################################################################
 echo -e "${GREEN}[$STEP/$TOTAL] Prerequisiti...${NC}"
@@ -137,6 +137,23 @@ echo -e "${GREEN}[$STEP/$TOTAL] Ricarico i moduli...${NC}"
 modprobe aic_load_fw 2>/dev/null || true
 modprobe aic_btusb 2>&1 || true
 rfkill unblock bluetooth 2>/dev/null || true
+STEP=$((STEP + 1))
+
+###############################################################################
+echo -e "${GREEN}[$STEP/$TOTAL] CLI aicctl (coesistenza, statistiche, eventi)...${NC}"
+if command -v cargo &>/dev/null; then
+    AICCTL_TARGET=$(mktemp -d)
+    if CARGO_TARGET_DIR="$AICCTL_TARGET" cargo build --release --locked --manifest-path "$SCRIPT_DIR/tools/aicctl/Cargo.toml"; then
+        install -Dm755 "$AICCTL_TARGET/release/aicctl" /usr/local/bin/aicctl
+        echo "  -> Installato in /usr/local/bin/aicctl"
+    else
+        echo -e "${YELLOW}  Compilazione di aicctl fallita: il driver funziona lo stesso; alternativa: iw ... vendor${NC}"
+    fi
+    rm -rf "$AICCTL_TARGET"
+else
+    echo -e "${YELLOW}  cargo non trovato (sotto sudo il PATH puo' perderlo): aicctl non installato.${NC}"
+    echo -e "${YELLOW}  Alternativa senza Rust: iw dev <if> vendor recv 0x414943 0x1 /dev/null (vedi docs/interfaccia-vendor.md).${NC}"
+fi
 STEP=$((STEP + 1))
 
 echo

@@ -31,6 +31,7 @@ rm -f /etc/udev/rules.d/41-aic8800d80-modeswitch.rules
 rm -f /etc/systemd/system/aic8800-modeswitch.service
 rm -f /etc/modprobe.d/aic8800-bt.conf
 rm -f /etc/modules-load.d/aic8800.conf
+rm -f /usr/local/bin/aicctl
 systemctl daemon-reload
 udevadm control --reload-rules
 
