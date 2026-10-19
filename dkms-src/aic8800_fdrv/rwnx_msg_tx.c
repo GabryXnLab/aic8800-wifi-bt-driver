@@ -3713,6 +3713,69 @@ int rwnx_send_me_set_lp_level(struct rwnx_hw *rwnx_hw, u8 lp_level)
     return rwnx_send_msg(rwnx_hw, req, 1, ME_SET_LP_LEVEL_CFM, NULL);
 }
 
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 17, 0) || defined(CONFIG_WPA3_FOR_OLD_KERNEL)
+/*
+ * NetworkManager completa i profili wpa-psk con auth-alg=open e, su un AP WPA2/WPA3, wpa_supplicant
+ * sceglie comunque l'AKM SAE: con un driver FullMAC chiede quindi una connect Open con AKM SAE,
+ * che l'AP rifiuta (status 53). Con AKM SAE l'unica autenticazione valida è SAE, che qui passa
+ * dall'external auth di wpa_supplicant. L'AKM scelto si legge dall'RSN IE della stazione (quello
+ * che il firmware mette nell'association request): crypto.akm_suites contiene anche gli AKM
+ * soltanto ammessi.
+ */
+static bool rwnx_connect_needs_sae(struct cfg80211_connect_params *sme)
+{
+    const u8 *ie, *pos, *end;
+    u16 n;
+    u32 akm;
+
+    if (sme->auth_type != NL80211_AUTHTYPE_AUTOMATIC &&
+        sme->auth_type != NL80211_AUTHTYPE_OPEN_SYSTEM)
+        return false;
+    if (!(sme->flags & CONNECT_REQ_EXTERNAL_AUTH_SUPPORT))
+        return false;
+
+    ie = cfg80211_find_ie(WLAN_EID_RSN, sme->ie, sme->ie_len);
+    if (!ie)
+        return false;
+    pos = ie + 2;
+    end = pos + ie[1];
+
+    /* versione, cipher di gruppo, cipher pairwise */
+    pos += 2 + 4;
+    if (pos + 2 > end)
+        return false;
+    n = get_unaligned_le16(pos);
+    pos += 2 + 4 * n;
+    if (pos + 2 > end)
+        return false;
+    n = get_unaligned_le16(pos);
+    pos += 2;
+    if (n == 0 || pos + 4 * n > end)
+        return false;
+
+    for (; n > 0; n--, pos += 4) {
+        akm = get_unaligned_be32(pos);
+        switch (akm) {
+        case WLAN_AKM_SUITE_SAE:
+        case WLAN_AKM_SUITE_FT_OVER_SAE:
+#ifdef WLAN_AKM_SUITE_SAE_EXT_KEY
+        case WLAN_AKM_SUITE_SAE_EXT_KEY:
+        case WLAN_AKM_SUITE_FT_SAE_EXT_KEY:
+#endif
+            break;
+        default:
+            return false;
+        }
+    }
+
+    /* Open con un PMKID è il PMKSA caching di SAE, valido: va lasciato com'è */
+    pos += 2;
+    if (pos + 2 <= end && get_unaligned_le16(pos) > 0)
+        return false;
+    return true;
+}
+#endif
+
 int rwnx_send_sm_connect_req(struct rwnx_hw *rwnx_hw,
                              struct rwnx_vif *rwnx_vif,
                              struct cfg80211_connect_params *sme,
@@ -3799,6 +3862,12 @@ int rwnx_send_sm_connect_req(struct rwnx_hw *rwnx_hw,
     req->dont_wait_bcmc = !rwnx_mod_params.listen_bcmc;
 
     /* Set auth_type */
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 17, 0) || defined(CONFIG_WPA3_FOR_OLD_KERNEL)
+    if (rwnx_connect_needs_sae(sme)) {
+        AICWFDBG(LOGINFO, "%s: AKM SAE con auth_type %d, uso SAE\n", __func__, sme->auth_type);
+        req->auth_type = WLAN_AUTH_SAE;
+    } else
+#endif
     if (sme->auth_type == NL80211_AUTHTYPE_AUTOMATIC)
         req->auth_type = WLAN_AUTH_OPEN;
     else if (sme->auth_type == NL80211_AUTHTYPE_OPEN_SYSTEM)

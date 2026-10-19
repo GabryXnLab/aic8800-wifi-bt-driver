@@ -79,6 +79,11 @@ Verifica che giri il modulo nuovo: `cat /sys/module/aic_load_fw/srcversion` ugua
   per CVSD multi-link; l'interfaccia isocrona arriva a alt 5, senza alt 6) e dichiara il wideband speech al core.
   Il conteggio SCO è solo quello del core: non rimettere contatori propri. I dati ISO (CIS/BIS) escono sui bulk
   come in btusb; la ricezione ISO non è implementata (btusb generico non la gestisce) e non è verificata.
+- WPA3: il firmware fa SAE solo con `auth_type` SAE e delega gli scambi a `wpa_supplicant` (external auth;
+  l'AKM nell'evento arriva con i byte invertiti, `wpa_supplicant` lo accetta). NetworkManager mette
+  `auth-alg=open` nei profili creati dalle UI, quindi `rwnx_send_sm_connect_req` passa a SAE quando l'RSN IE
+  della stazione ha solo AKM SAE e nessun PMKID (Open con PMKID è il PMKSA caching, va lasciato).
+  `crypto.akm_suites` non basta: contiene anche gli AKM solo ammessi. `SET_PMKSA` non è supportato (-95).
 - `aicbluetooth.c` ha righe CRLF: modificarlo in binario o con strumenti che le preservano.
 - nixpkgs 26.05 non ha più i kernel 6.17, 6.19, 7.0, 7.1 (EOL): la matrice usa quelli presenti.
 - `aic8800_fdrv` usa simboli esportati da `aic_load_fw`: compilare prima `aic_load_fw` e passare
